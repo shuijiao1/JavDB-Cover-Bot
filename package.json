@@ -1,0 +1,18 @@
+{
+  "name": "javdb-cover-bot",
+  "version": "0.1.0",
+  "description": "Telegram bot: send JAV code, return JavDB cover and metadata",
+  "type": "module",
+  "main": "src/bot.js",
+  "scripts": {
+    "start": "node src/bot.js",
+    "query": "node src/query.js",
+    "check": "node --check src/bot.js && node --check src/javdb.js && node --check src/query.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.7",
+    "opencc-js": "^1.3.1",
+    "telegraf": "^4.16.3"
+  }
+}
