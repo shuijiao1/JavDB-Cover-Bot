@@ -2,8 +2,7 @@ name: javdb-cover-bot
 
 services:
   bot:
-    build: .
-    image: javdb-cover-bot:local
+    image: ghcr.io/shuijiao1/javdb-cover-bot:latest
     container_name: javdb-cover-bot
     restart: unless-stopped
     env_file:
