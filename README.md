@@ -2,7 +2,7 @@
 
 **中文** | [English](README.en.md)
 
-**一个轻量的 Telegram 番号查询 Bot，发送番号后自动返回 JavDB 封面、中文标题、日期、演员与标签。**
+**一个轻量的 Telegram 番号查询 Bot，发送番号后自动返回封面、中文标题、日期、演员与标签。**
 
 > 支持 Docker Compose 部署，封面可按配置使用 Telegram spoiler 遮罩。
 
@@ -12,7 +12,7 @@
 
 - 发送番号即可查询，例如 `SSIS-001`
 - 支持 `/av`、`/jav`、`/javdb`、`/jd` 命令
-- 自动返回封面图和基础信息
+- 自动返回封面图、中文标题、日期、演员与标签
 - 字段名使用 Telegram HTML 加粗显示
 - 支持用户白名单
 - 支持 Docker Compose 部署
@@ -58,7 +58,7 @@ SSIS-001
 
 ```text
 /av SSIS-001
-/javdb SSIS-001
+/jav SSIS-001
 ```
 
 ## ⚙️ 配置说明

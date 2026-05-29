@@ -2,7 +2,7 @@
 
 [中文](README.md) | **English**
 
-**A lightweight Telegram bot that returns JavDB cover images and basic metadata after receiving a JAV code.**
+**A lightweight Telegram bot that returns cover images and Simplified Chinese metadata after receiving a JAV code.**
 
 > Docker Compose deployment is supported. Cover photos can be sent with Telegram spoiler masking.
 
@@ -12,7 +12,7 @@
 
 - Query by sending a code, for example `SSIS-001`
 - Supports `/av`, `/jav`, `/javdb`, and `/jd`
-- Returns cover image and basic metadata
+- Returns cover image, Simplified Chinese title, release date, actresses and tags
 - Uses bold Telegram HTML labels in captions
 - Optional user allowlist
 - Docker Compose deployment
@@ -58,7 +58,7 @@ Or use commands:
 
 ```text
 /av SSIS-001
-/javdb SSIS-001
+/jav SSIS-001
 ```
 
 ## ⚙️ Configuration

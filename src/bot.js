@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import { Telegraf } from 'telegraf';
 import { mkdir } from 'node:fs/promises';
-import { queryJavdb, downloadCover, normalizeCode } from './javdb.js';
+import { downloadCover } from './javdb.js';
+import { queryJav321, normalizeCode } from './jav321.js';
 
 const token = process.env.BOT_TOKEN;
 if (!token) throw new Error('BOT_TOKEN is required');
@@ -30,7 +31,7 @@ async function handleQuery(ctx, raw) {
   const loading = await ctx.reply('🔎 正在查询...');
   let coverFile;
   try {
-    const result = await queryJavdb(code);
+    const result = await queryJav321(code);
     if (result.cover) coverFile = await downloadCover(result.cover, tmpDir);
     if (coverFile?.file) {
       await ctx.replyWithPhoto({ source: coverFile.file }, {
@@ -59,9 +60,9 @@ await bot.telegram.setMyCommands([
   { command: 'start', description: '开始使用' },
   { command: 'help', description: '查看帮助' },
   { command: 'av', description: '查询番号封面和简介' },
-  { command: 'javdb', description: '查询 JavDB 番号信息' },
+  { command: 'jav', description: '查询番号信息' },
 ]).catch(() => {});
-await bot.telegram.setMyDescription('发送番号，自动返回 JavDB 封面和中文简介。').catch(() => {});
+await bot.telegram.setMyDescription('发送番号，自动返回封面和中文简介。').catch(() => {});
 await bot.telegram.setMyShortDescription('番号封面和中文简介查询').catch(() => {});
 
 await bot.launch();

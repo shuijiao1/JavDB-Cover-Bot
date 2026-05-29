@@ -9,6 +9,18 @@ import * as OpenCC from 'opencc-js';
 const toSimplified = OpenCC.Converter({ from: 'tw', to: 'cn' });
 const zh = (text = '') => toSimplified(String(text));
 
+// Keep proper nouns out of generic machine-translation mistakes.
+// Example: Google renders 白峰ミウ as 白峰美宇, but ミウ as a Japanese given name is normally 美羽.
+const TITLE_TRANSLATION_FIXES = [
+  [/白峰美宇/g, '白峰美羽'],
+];
+
+function fixTitleTranslation(text = '') {
+  let fixed = String(text || '');
+  for (const [from, to] of TITLE_TRANSLATION_FIXES) fixed = fixed.replace(from, to);
+  return fixed;
+}
+
 const execFileAsync = promisify(execFile);
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
@@ -79,9 +91,9 @@ async function translateJaToZh(text) {
     ], { maxBuffer: 1024 * 1024 });
     const data = JSON.parse(stdout);
     const translated = (data?.[0] || []).map((part) => part?.[0] || '').join('').trim();
-    return zh(translated || raw);
+    return fixTitleTranslation(zh(translated || raw));
   } catch {
-    return zh(raw);
+    return fixTitleTranslation(zh(raw));
   }
 }
 
@@ -192,6 +204,8 @@ export async function downloadCover(coverUrl, tmpRoot) {
   const dir = await mkdtemp(join(tmpRoot || tmpdir(), 'javdb-cover-'));
   const ext = extname(new URL(coverUrl).pathname) || '.jpg';
   const file = join(dir, `cover${ext}`);
-  await curlBinary(coverUrl, file);
+  const hostname = new URL(coverUrl).hostname;
+  const referer = hostname.includes('fourhoi.com') ? 'https://missav.ai/' : 'https://javdb.com/';
+  await curlBinary(coverUrl, file, referer);
   return { file, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }
