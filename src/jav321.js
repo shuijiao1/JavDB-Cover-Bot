@@ -217,6 +217,9 @@ async function fetchJavdbMeta(code) {
   try {
     const result = await queryJavdb(code);
     return {
+      rawTitle: result?.detail?.rawTitle || result?.item?.title || '',
+      releaseDate: result?.detail?.releaseDate || result?.item?.meta || '',
+      cover: result?.cover || '',
       tags: normalizeTags(result?.detail?.tags || []),
       actors: (result?.detail?.actors || []).map((a) => a?.name || a).filter(Boolean),
     };
@@ -264,8 +267,19 @@ export async function queryJav321(input) {
   } catch {
     detail = await fetchMissavDetail(code);
   }
+  const javdbMeta = await fetchJavdbMeta(detail?.code || code);
+  if (!detail && javdbMeta?.rawTitle) {
+    detail = {
+      rawTitle: javdbMeta.rawTitle,
+      releaseDate: javdbMeta.releaseDate,
+      code,
+      actors: javdbMeta.actors || [],
+      tags: javdbMeta.tags || [],
+      cover: javdbMeta.cover,
+      source: 'javdb',
+    };
+  }
   if (!detail) throw new Error('未找到相关番号');
-  const javdbMeta = await fetchJavdbMeta(detail.code || code);
   detail.tags = javdbMeta.tags;
   if ((!detail.actors || !detail.actors.length) && javdbMeta.actors.length) detail.actors = javdbMeta.actors;
   if (!detail.actors || !detail.actors.length) detail.actors = extractActorsFromTitle(detail.rawTitle);
