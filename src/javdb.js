@@ -32,6 +32,7 @@ export function normalizeCode(input) {
     .replace(/^\/[a-z_]+(@\w+)?\s*/i, '')
     .replace(/\s+/g, '-')
     .replace(/[＿_]/g, '-')
+    .replace(/-C$/i, '')
     .toUpperCase();
 }
 

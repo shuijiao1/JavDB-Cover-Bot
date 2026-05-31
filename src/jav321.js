@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import * as cheerio from 'cheerio';
 import * as OpenCC from 'opencc-js';
 import { ACTRESS_NAME_FIXES } from './actress-names.js';
 import { queryJavdb } from './javdb.js';
@@ -26,6 +27,7 @@ export function normalizeCode(input) {
     .replace(/^\/[a-z_]+(@\w+)?\s*/i, '')
     .replace(/\s+/g, '-')
     .replace(/[＿_]/g, '-')
+    .replace(/-C$/i, '')
     .toUpperCase();
 }
 
@@ -105,9 +107,11 @@ function pickAll(re, html) {
 
 function absDmm(url = '') {
   if (!url) return '';
-  if (url.startsWith('//')) return `https:${url}`;
-  if (url.startsWith('http://')) return `https://${url.slice(7)}`;
-  return url;
+  let fixed = url.startsWith('//') ? `https:${url}` : url;
+  if (fixed.startsWith('http://')) fixed = `https://${fixed.slice(7)}`;
+  // DMM ps/jp images are tiny thumbnails; pl is the usable cover size.
+  fixed = fixed.replace(/(\/digital\/video\/[^/]+\/[^/.]+)(?:ps|jp)(\.jpg)$/i, '$1pl$2');
+  return fixed;
 }
 
 function unique(arr) {
@@ -121,6 +125,15 @@ const GENRE_TRANSLATIONS = new Map([
   ['Individual', '单体作品'],
   ['Hi-Def', '高清'],
   ['Hd', '高清'],
+  ['ハイビジョン', '高清'],
+  ['中出し', '中出'],
+  ['フェラ', '口交'],
+  ['独占配信', '独家'],
+  ['おもちゃ', '玩具'],
+  ['女子校生', '女学生'],
+  ['東京恋人他30％OFF', ''],
+  ['东京恋人他30％OFF', ''],
+  ['东京恋人他30%OFF', ''],
   ['Idol Video', '写真'],
   ['Advertising Idol', '写真偶像'],
   ['Sexy', '性感'],
@@ -136,7 +149,11 @@ const GENRE_TRANSLATIONS = new Map([
   ['Drama', '剧情'],
   ['Fetish', '恋物'],
   ['Handjob', '手交'],
+  ['Tit Job', '乳交'],
   ['Kissing', '接吻'],
+  ['Kiss', '接吻'],
+  ['Cunnilingus', '舔阴'],
+  ['Beautiful Breasts', '美乳'],
   ['Lingerie', '内衣'],
   ['Mature Woman', '熟女'],
   ['Milf', '熟女'],
@@ -144,12 +161,20 @@ const GENRE_TRANSLATIONS = new Map([
   ['Office Lady', 'OL'],
   ['Orgy', '乱交'],
   ['POV', '主观视角'],
+  ['Subjective Perspective', '主观视角'],
+  ['Doggy Style', '后入'],
   ['School Girl', '女学生'],
   ['Slender', '苗条'],
   ['Squirting', '潮吹'],
   ['Teacher', '教师'],
   ['Threesome', '3P'],
   ['VR Exclusive', 'VR'],
+  ['My Amateur', '素人作品'],
+  ['CENSORED', '有码'],
+  ['Cum Inside', '中出'],
+  ['Toy', '玩具'],
+  ['Masturbation', '自慰'],
+  ['Blowjob', '口交'],
 ]);
 
 const TAG_ORDER = ['人妻', '巨乳', '单体作品', 'NTR', '中出', '高清', '独家'];
@@ -157,13 +182,25 @@ const TAG_ORDER = ['人妻', '巨乳', '单体作品', 'NTR', '中出', '高清'
 function translateGenre(text = '') {
   const raw = String(text || '').trim();
   if (!raw) return '';
-  return GENRE_TRANSLATIONS.get(raw) || zh(raw);
+  if (GENRE_TRANSLATIONS.has(raw)) return GENRE_TRANSLATIONS.get(raw);
+  const titleCase = raw.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  if (GENRE_TRANSLATIONS.has(titleCase)) return GENRE_TRANSLATIONS.get(titleCase);
+  return zh(raw);
 }
 
-const BLOCKED_TAGS = new Set(['无码破解']);
+function decodeBasicEntities(text = '') {
+  return String(text)
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#8211;/g, '–')
+    .replace(/&hellip;/g, '…');
+}
+
+const BLOCKED_TAGS = new Set(['无码破解', '有码', 'CENSORED']);
 
 function normalizeTags(tags = []) {
-  const normalized = unique(tags.filter(Boolean).filter((tag) => !BLOCKED_TAGS.has(String(tag).trim())));
+  const normalized = unique(tags.filter(Boolean).map((tag) => String(tag).trim()).filter((tag) => tag && !BLOCKED_TAGS.has(tag)));
   return normalized.sort((a, b) => {
     const ai = TAG_ORDER.indexOf(a);
     const bi = TAG_ORDER.indexOf(b);
@@ -213,17 +250,23 @@ async function fetchThreeXPlanetDetail(code) {
       pickFirst(/<meta property="og:title" content="([^"]+)"/i, html) ||
       pickFirst(/<title>([^<]+)<\/title>/i, html)
     ).replace(/\s+-\s+3xplanet.*$/i, '').trim();
-    const description = zh(
+    const description = decodeBasicEntities(zh(
       pickFirst(/<meta name="description" content="([^"]+)"/i, html) ||
       pickFirst(/<meta property="og:description" content="([^"]+)"/i, html)
-    );
+    ));
     const releaseDate = pickFirst(/配信開始日[：:]\s*([0-9/.-]+)/i, description);
+    const actorJa = pickFirst(/出演者[：:]\s*([^\s]+(?:[、,，]\s*[^\s]+)*)\s+サイズ[：:]/i, description);
+    const actorEn = pickFirst(/Starring:\s*(.*?)\s+Studio:/i, description);
     const actors = unique([
-      ...pickAll(/出演者[：:]\s*([^\n<]+)/gi, description).flatMap((part) => part.split(/[、,，\s]+/)),
-      ...pickAll(/Starring:\s*([^<\n]+)/gi, description).flatMap((part) => part.split(/[,，]/)),
+      ...actorJa.split(/[、,，]/),
+      ...actorEn.split(/[,，]/),
     ].map((name) => zh(name).trim()).filter(Boolean));
-    const tagsBlock = pickFirst(/Tags:\s*([^<\n]+)/i, description);
-    const tags = normalizeTags(tagsBlock.split(/[,，]/).map((tag) => translateGenre(tag.trim())));
+    const jpGenreBlock = pickFirst(/ジャンル[：:]\s*(.*?)\s+(?:東京恋人|品番|~~DOWNLOAD~~)/i, description);
+    const enTagsBlock = pickFirst(/Tags:\s*(.*?)\s+配信開始日[：:]/i, description);
+    const tags = normalizeTags([
+      ...jpGenreBlock.split(/\s+/),
+      ...enTagsBlock.split(/[,，]/),
+    ].map((tag) => translateGenre(zh(tag).trim())));
     const cover = absDmm(
       pickFirst(/<meta property="og:image" content="([^"]+)"/i, html) ||
       pickFirst(/<meta name="twitter:image" content="([^"]+)"/i, html) ||
@@ -249,8 +292,11 @@ async function fetchJavDatabaseTags(code) {
 }
 
 async function fetchJavdbMeta(code) {
+  const normalized = normalizeCode(code);
   try {
-    const result = await queryJavdb(code);
+    const result = await queryJavdb(normalized);
+    const matchedCode = normalizeCode(result?.item?.code || result?.detail?.code || '');
+    if (matchedCode !== normalized) return { tags: [], actors: [] };
     return {
       rawTitle: result?.detail?.rawTitle || result?.item?.title || '',
       releaseDate: result?.detail?.releaseDate || result?.item?.meta || '',
@@ -273,21 +319,29 @@ function extractActorsFromTitle(title = '') {
 }
 
 function parseDetail(html) {
-  const rawTitle = pickFirst(/<title>([^<]+)<\/title>/i, html)
+  const $ = cheerio.load(html);
+  const panel = $('.panel.panel-info').first();
+  const panelHtml = panel.html() || html;
+  const panelText = panel.text().replace(/\s+/g, ' ').trim();
+  const rawTitle = (panel.find('.panel-heading h3').first().contents().filter((_, node) => node.type === 'text').text() || pickFirst(/<title>([^<]+)<\/title>/i, html))
     .replace(/\s+[A-Za-z0-9-]+\s+[^<]*$/i, '')
     .trim();
-  const maker = pickFirst(/<b>メーカー<\/b>:\s*(?:<a [^>]*>)?([^<]+)/i, html);
-  const releaseDate = pickFirst(/<b>配信開始日<\/b>:\s*([^<]+)/i, html);
-  const code = pickFirst(/<b>品番<\/b>:\s*([^<]+)/i, html).toUpperCase();
-  const actors = unique(pickAll(/<b>出演者<\/b>:\s*([\s\S]*?)<br>/gi, html)
-    .flatMap((block) => [...block.matchAll(/<a [^>]*>([^<]+)<\/a>/g)].map((m) => m[1].trim())));
-  const tags = unique(pickAll(/<a href="\/genre\/[^>]+>([^<]+)<\/a>/gi, html));
+  const maker = pickFirst(/<b>メーカー<\/b>:\s*(?:<a [^>]*>)?([^<]+)/i, panelHtml);
+  const releaseDate = pickFirst(/<b>配信開始日<\/b>:\s*([^<]+)/i, panelHtml);
+  const code = pickFirst(/<b>品番<\/b>:\s*([^<]+)/i, panelHtml).toUpperCase();
+  const actorBlock = pickFirst(/<b>出演者<\/b>:\s*([\s\S]*?)<br>/i, panelHtml);
+  const actors = actorBlock && actorBlock.length < 500
+    ? unique([...actorBlock.matchAll(/<a [^>]*>([^<]+)<\/a>/g)].map((m) => m[1].trim()))
+    : [];
+  const tags = unique(pickAll(/<a href="\/genre\/[^>]+>([^<]+)<\/a>/gi, panelHtml));
   const cover = absDmm(
-    pickFirst(/poster="([^"]+)"/i, html) ||
-    pickFirst(/<img[^>]+src="([^"]+\/digital\/video\/[^"]+pl\.jpg)"/i, html) ||
-    pickFirst(/<img[^>]+src="([^"]+\/digital\/video\/[^"]+ps\.jpg)"/i, html)
+    panel.find('img.img-responsive').first().attr('src') ||
+    pickFirst(/poster="([^"]+)"/i, panelHtml) ||
+    pickFirst(/<img[^>]+src="([^"]+\/digital\/video\/[^"]+pl\.jpg)"/i, panelHtml) ||
+    pickFirst(/<img[^>]+src="([^"]+\/digital\/video\/[^"]+ps\.jpg)"/i, panelHtml) ||
+    pickFirst(/<img[^>]+src="([^"]+\/digital\/amateur\/[^"]+jp\.jpg)"/i, panelHtml)
   );
-  return { rawTitle, maker, releaseDate, code, actors, tags, cover };
+  return { rawTitle, maker, releaseDate, code, actors, tags, cover, panelText };
 }
 
 export async function queryJav321(input) {
@@ -315,15 +369,16 @@ export async function queryJav321(input) {
     };
   }
   if (!detail) throw new Error('未找到相关番号');
-  if (!detail.cover) {
-    const threeXPlanetDetail = await fetchThreeXPlanetDetail(detail.code || code);
-    if (threeXPlanetDetail?.cover) {
-      detail.cover = threeXPlanetDetail.cover;
-      if (!detail.releaseDate && threeXPlanetDetail.releaseDate) detail.releaseDate = threeXPlanetDetail.releaseDate;
-      if ((!detail.actors || !detail.actors.length) && !javdbMeta.actors.length && threeXPlanetDetail.actors?.length) detail.actors = threeXPlanetDetail.actors;
-      if ((!detail.tags || !detail.tags.length) && threeXPlanetDetail.tags?.length) detail.tags = threeXPlanetDetail.tags;
-    }
+  const threeXPlanetDetail = (!detail.cover || !detail.actors?.length || !detail.tags?.length)
+    ? await fetchThreeXPlanetDetail(detail.code || code)
+    : null;
+  if (threeXPlanetDetail?.cover) {
+    // 3xplanet often has the actual composite cover for amateur entries where jav321/DMM returns a mismatched small jacket.
+    detail.cover = threeXPlanetDetail.cover;
+    if (!detail.releaseDate && threeXPlanetDetail.releaseDate) detail.releaseDate = threeXPlanetDetail.releaseDate;
   }
+  if ((!detail.actors || !detail.actors.length) && !javdbMeta.actors.length && threeXPlanetDetail?.actors?.length) detail.actors = threeXPlanetDetail.actors;
+  if ((!detail.tags || !detail.tags.length) && threeXPlanetDetail?.tags?.length) detail.tags = threeXPlanetDetail.tags;
   detail.tags = javdbMeta.tags.length ? javdbMeta.tags : (detail.tags || []);
   if ((!detail.actors || !detail.actors.length) && javdbMeta.actors.length) detail.actors = javdbMeta.actors;
   if (!detail.actors || !detail.actors.length) detail.actors = extractActorsFromTitle(detail.rawTitle);
