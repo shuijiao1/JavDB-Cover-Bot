@@ -201,6 +201,41 @@ async function fetchMissavTags(code) {
   return (await fetchMissavDetail(code))?.tags || [];
 }
 
+async function fetchThreeXPlanetDetail(code) {
+  const normalized = normalizeCode(code);
+  if (!normalized) return null;
+  const slug = normalized.toLowerCase();
+  try {
+    const html = await curlText(`https://3xplanet.com/${encodeURIComponent(slug)}/`, null, 'https://3xplanet.com/');
+    if (!new RegExp(normalized.replace(/[-/\^$*+?.()|[\]{}]/g, '\\$&'), 'i').test(html)) return null;
+    const rawTitle = zh(
+      pickFirst(/<h1[^>]*>([^<]+)<\/h1>/i, html) ||
+      pickFirst(/<meta property="og:title" content="([^"]+)"/i, html) ||
+      pickFirst(/<title>([^<]+)<\/title>/i, html)
+    ).replace(/\s+-\s+3xplanet.*$/i, '').trim();
+    const description = zh(
+      pickFirst(/<meta name="description" content="([^"]+)"/i, html) ||
+      pickFirst(/<meta property="og:description" content="([^"]+)"/i, html)
+    );
+    const releaseDate = pickFirst(/配信開始日[：:]\s*([0-9/.-]+)/i, description);
+    const actors = unique([
+      ...pickAll(/出演者[：:]\s*([^\n<]+)/gi, description).flatMap((part) => part.split(/[、,，\s]+/)),
+      ...pickAll(/Starring:\s*([^<\n]+)/gi, description).flatMap((part) => part.split(/[,，]/)),
+    ].map((name) => zh(name).trim()).filter(Boolean));
+    const tagsBlock = pickFirst(/Tags:\s*([^<\n]+)/i, description);
+    const tags = normalizeTags(tagsBlock.split(/[,，]/).map((tag) => translateGenre(tag.trim())));
+    const cover = absDmm(
+      pickFirst(/<meta property="og:image" content="([^"]+)"/i, html) ||
+      pickFirst(/<meta name="twitter:image" content="([^"]+)"/i, html) ||
+      pickFirst(/<img[^>]+src="([^"]*3xplanet[^"<>]*_cover\.jpg)"/i, html)
+    );
+    if (!cover) return null;
+    return { rawTitle, releaseDate, code: normalized, actors, tags, cover, source: '3xplanet' };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchJavDatabaseTags(code) {
   const slug = String(code || '').toLowerCase();
   if (!slug) return [];
@@ -280,7 +315,16 @@ export async function queryJav321(input) {
     };
   }
   if (!detail) throw new Error('未找到相关番号');
-  detail.tags = javdbMeta.tags;
+  if (!detail.cover) {
+    const threeXPlanetDetail = await fetchThreeXPlanetDetail(detail.code || code);
+    if (threeXPlanetDetail?.cover) {
+      detail.cover = threeXPlanetDetail.cover;
+      if (!detail.releaseDate && threeXPlanetDetail.releaseDate) detail.releaseDate = threeXPlanetDetail.releaseDate;
+      if ((!detail.actors || !detail.actors.length) && !javdbMeta.actors.length && threeXPlanetDetail.actors?.length) detail.actors = threeXPlanetDetail.actors;
+      if ((!detail.tags || !detail.tags.length) && threeXPlanetDetail.tags?.length) detail.tags = threeXPlanetDetail.tags;
+    }
+  }
+  detail.tags = javdbMeta.tags.length ? javdbMeta.tags : (detail.tags || []);
   if ((!detail.actors || !detail.actors.length) && javdbMeta.actors.length) detail.actors = javdbMeta.actors;
   if (!detail.actors || !detail.actors.length) detail.actors = extractActorsFromTitle(detail.rawTitle);
   if (!detail.tags.length && detail.source === 'missav') detail.tags = detail.tags || [];

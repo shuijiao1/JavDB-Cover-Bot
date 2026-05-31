@@ -5,6 +5,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, extname } from 'node:path';
 import * as OpenCC from 'opencc-js';
+import { ACTRESS_NAME_FIXES } from './actress-names.js';
 
 const toSimplified = OpenCC.Converter({ from: 'tw', to: 'cn' });
 const zh = (text = '') => toSimplified(String(text));
@@ -49,6 +50,8 @@ function toHashTag(text = '') {
 async function translateNameToZh(name = '') {
   const raw = String(name || '').trim();
   if (!raw) return raw;
+  const mapped = ACTRESS_NAME_FIXES.get(raw) || ACTRESS_NAME_FIXES.get(zh(raw));
+  if (mapped) return mapped;
   // Common actress-name transliteration fixes. Google Translate often renders names too literally.
   const nameFixes = [
     [/ミウ/g, '美羽'],
