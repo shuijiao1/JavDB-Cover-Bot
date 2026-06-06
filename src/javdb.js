@@ -27,13 +27,16 @@ const execFileAsync = promisify(execFile);
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 export function normalizeCode(input) {
-  return String(input || '')
+  const code = String(input || '')
     .trim()
     .replace(/^\/[a-z_]+(@\w+)?\s*/i, '')
     .replace(/\s+/g, '-')
     .replace(/[＿_]/g, '-')
     .replace(/-C$/i, '')
     .toUpperCase();
+  const fc2 = /^(?:FC2(?:-PPV)?-)?(\d{5,})$/.exec(code);
+  if (fc2) return `FC2-PPV-${fc2[1]}`;
+  return code;
 }
 
 function htmlEscape(text = '') {
@@ -125,7 +128,7 @@ function parseSearch(html) {
   return $('.movie-list .item').toArray().map((el) => {
     const $a = $(el).find('a').first();
     const title = $a.find('.video-title').text().trim().replace(/\s+/g, ' ');
-    const code = (/([A-Za-z]+-\d+)/.exec(title)?.[1] || '').toUpperCase();
+    const code = normalizeCode((/(FC2(?:-PPV)?-\d+|[A-Za-z]+-\d+)/i.exec(title)?.[1] || ''));
     return {
       code,
       title: zh(title),
@@ -164,7 +167,7 @@ function parseDetail(html) {
 
 export async function queryJavdb(input) {
   const code = normalizeCode(input);
-  if (!code || !/[A-Z]+-?\d+/.test(code)) throw new Error('请输入番号，例如：SSIS-001');
+  if (!code || !/(?:FC2-PPV-\d+|[A-Z]+-?\d+)/.test(code)) throw new Error('请输入番号，例如：SSIS-001');
 
   const searchUrl = `https://javdb.com/search?q=${encodeURIComponent(code)}&f=all`;
   const searchHtml = await curlText(searchUrl);

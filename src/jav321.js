@@ -22,13 +22,16 @@ function fixTitleTranslation(text = '') {
 }
 
 export function normalizeCode(input) {
-  return String(input || '')
+  const code = String(input || '')
     .trim()
     .replace(/^\/[a-z_]+(@\w+)?\s*/i, '')
     .replace(/\s+/g, '-')
     .replace(/[＿_]/g, '-')
     .replace(/-C$/i, '')
     .toUpperCase();
+  const fc2 = /^(?:FC2(?:-PPV)?-)?(\d{5,})$/.exec(code);
+  if (fc2) return `FC2-PPV-${fc2[1]}`;
+  return code;
 }
 
 function htmlEscape(text = '') {
@@ -346,7 +349,7 @@ function parseDetail(html) {
 
 export async function queryJav321(input) {
   const code = normalizeCode(input);
-  if (!code || !/[A-Z]+-?\d+/.test(code)) throw new Error('请输入番号，例如：SSIS-001');
+  if (!code || !/(?:FC2-PPV-\d+|[A-Z]+-?\d+)/.test(code)) throw new Error('请输入番号，例如：SSIS-001');
 
   let detail;
   try {

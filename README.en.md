@@ -11,6 +11,7 @@
 ## 🎯 Features
 
 - Query by sending a code, for example `SSIS-001`
+- Supports FC2 shorthand: `FC2-PPV-2767346`, `FC2-2767346`, and `2767346` normalize to `FC2-PPV-2767346`
 - Supports `/av`, `/jav`, `/javdb`, and `/jd`
 - Returns cover image, Simplified Chinese title, release date, actresses and tags
 - Uses bold Telegram HTML labels in captions
