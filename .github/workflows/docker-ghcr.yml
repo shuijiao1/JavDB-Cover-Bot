@@ -38,7 +38,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/javdb-cover-bot
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=sha,prefix=sha-
             type=ref,event=tag
 
@@ -48,4 +48,6 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.version=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}
