@@ -13,6 +13,11 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 
 const TITLE_TRANSLATION_FIXES = [
   [/白峰美宇/g, '白峰美羽'],
+  [/Remu Suzumori/gi, '凉森玲梦'],
+  [/Suzumori Remu/gi, '凉森玲梦'],
+  [/铃森蕾梦/g, '凉森玲梦'],
+  [/鈴森蕾梦/g, '凉森玲梦'],
+  [/您可以/g, '你可以'],
 ];
 
 function fixTitleTranslation(text = '') {
@@ -44,6 +49,13 @@ function toHashTag(text = '') {
   const t = String(text).trim().replace(/\s+/g, '');
   if (!t) return '';
   return `#${t.replace(/[#.,，。:：;；!！?？()（）\[\]【】{}<>《》'"“”‘’、/\\|]/g, '')}`;
+}
+
+function normalizeActorName(name = '') {
+  const raw = String(name || '').trim();
+  if (!raw) return '';
+  if (/^(?:amateur|素人)$/i.test(raw)) return '素人';
+  return raw;
 }
 
 async function curlText(url, postFields = null, referer = 'https://www.jav321.com/') {
@@ -191,6 +203,24 @@ function translateGenre(text = '') {
   return zh(raw);
 }
 
+
+function cleanTitle(text = '', code = '') {
+  let t = decodeBasicEntities(String(text || ''));
+  t = t.replace(/<\/?title\b[^>]*>/gi, ' ')
+    .replace(/<meta\b[\s\S]*$/i, ' ')
+    .replace(/&lt;\/?title\b[\s\S]*$/i, ' ')
+    .replace(/&lt;meta\b[\s\S]*$/i, ' ')
+    .replace(/\s*(?:エロ動画|アダルトビデオ|MGS動画|Prestige Group|プレステージ グループ)\s*[\s\S]*$/i, ' ')
+    .replace(/^[A-Z]+-?\d+\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (code) {
+    const re = new RegExp(`\\b${String(code).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'ig');
+    t = t.replace(re, '').replace(/\s+/g, ' ').trim();
+  }
+  return t;
+}
+
 function decodeBasicEntities(text = '') {
   return String(text)
     .replace(/&amp;/g, '&')
@@ -305,7 +335,10 @@ async function fetchJavdbMeta(code) {
       releaseDate: result?.detail?.releaseDate || result?.item?.meta || '',
       cover: result?.cover || '',
       tags: normalizeTags(result?.detail?.tags || []),
-      actors: (result?.detail?.actors || []).map((a) => a?.name || a).filter(Boolean),
+      actors: (result?.detail?.actors || [])
+        .filter((a) => !a?.gender || a.gender === 'female')
+        .map((a) => a?.name || a)
+        .filter(Boolean),
     };
   } catch {
     return { tags: [], actors: [] };
@@ -326,9 +359,12 @@ function parseDetail(html) {
   const panel = $('.panel.panel-info').first();
   const panelHtml = panel.html() || html;
   const panelText = panel.text().replace(/\s+/g, ' ').trim();
-  const rawTitle = (panel.find('.panel-heading h3').first().contents().filter((_, node) => node.type === 'text').text() || pickFirst(/<title>([^<]+)<\/title>/i, html))
-    .replace(/\s+[A-Za-z0-9-]+\s+[^<]*$/i, '')
-    .trim();
+  const heading = panel.find('.panel-heading h3').first();
+  heading.find('small').remove();
+  const rawTitle = cleanTitle(
+    heading.text() || pickFirst(/<title>([\s\S]*?)<\/title>/i, html),
+    pickFirst(/<b>品番<\/b>:\s*([^<]+)/i, panelHtml).toUpperCase()
+  );
   const maker = pickFirst(/<b>メーカー<\/b>:\s*(?:<a [^>]*>)?([^<]+)/i, panelHtml);
   const releaseDate = pickFirst(/<b>配信開始日<\/b>:\s*([^<]+)/i, panelHtml);
   const code = pickFirst(/<b>品番<\/b>:\s*([^<]+)/i, panelHtml).toUpperCase();
@@ -386,13 +422,17 @@ export async function queryJav321(input) {
   if ((!detail.actors || !detail.actors.length) && javdbMeta.actors.length) detail.actors = javdbMeta.actors;
   if (!detail.actors || !detail.actors.length) detail.actors = extractActorsFromTitle(detail.rawTitle);
   if (!detail.tags.length && detail.source === 'missav') detail.tags = detail.tags || [];
-  const originalTitle = detail.rawTitle || code;
-  const translatedTitle = await translateJaToZh(originalTitle);
+  const cleanJavdbTitle = cleanTitle(javdbMeta.rawTitle || '', detail.code || code);
+  let originalTitle = cleanJavdbTitle || cleanTitle(detail.rawTitle || code, detail.code || code);
+  originalTitle = originalTitle.replace(/[」』"'“”‘’：:、，。\s]+$/g, '').trim();
+  detail.rawTitle = originalTitle;
+  const translatedTitle = cleanTitle(await translateJaToZh(originalTitle), detail.code || code).replace(/[」』"'“”‘’：:、，。\s]+$/g, '').trim();
 
   const actorTags = [];
   for (const rawName of detail.actors || []) {
-    const zhName = await translateNameToZh(rawName);
-    for (const name of [rawName, zhName]) {
+    const normalizedRawName = normalizeActorName(rawName);
+    const zhName = normalizeActorName(await translateNameToZh(normalizedRawName));
+    for (const name of [normalizedRawName, zhName]) {
       const tag = toHashTag(name);
       if (tag && !actorTags.includes(tag)) actorTags.push(tag);
     }
