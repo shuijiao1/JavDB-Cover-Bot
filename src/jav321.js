@@ -215,8 +215,14 @@ function cleanTitle(text = '', code = '') {
     .replace(/\s+/g, ' ')
     .trim();
   if (code) {
-    const re = new RegExp(`\\b${String(code).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'ig');
+    const escapedCode = String(code).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const re = new RegExp(`\\b${escapedCode}\\b`, 'ig');
     t = t.replace(re, '').replace(/\s+/g, ' ').trim();
+    const fc2 = /^FC2-PPV-(\d+)$/i.exec(String(code));
+    if (fc2) {
+      const fc2TitleRe = new RegExp(`\\b(?:FC2\\s*(?:-|\\s)?PPV\\s*(?:-|\\s)?|FC2\\s*(?:-|\\s)?|PPV\\s*(?:-|\\s)?)${fc2[1]}\\b`, 'ig');
+      t = t.replace(fc2TitleRe, '').replace(/\s+/g, ' ').trim();
+    }
   }
   return t;
 }
@@ -287,15 +293,15 @@ async function fetchThreeXPlanetDetail(code) {
       pickFirst(/<meta name="description" content="([^"]+)"/i, html) ||
       pickFirst(/<meta property="og:description" content="([^"]+)"/i, html)
     ));
-    const releaseDate = pickFirst(/配信開始日[：:]\s*([0-9/.-]+)/i, description);
+    const releaseDate = pickFirst(/(?:配信開始日|販売日|贩売日|销售日)[：:]\s*([0-9/.-]+)/i, description);
     const actorJa = pickFirst(/出演者[：:]\s*([^\s]+(?:[、,，]\s*[^\s]+)*)\s+サイズ[：:]/i, description);
     const actorEn = pickFirst(/Starring:\s*(.*?)\s+Studio:/i, description);
     const actors = unique([
       ...actorJa.split(/[、,，]/),
       ...actorEn.split(/[,，]/),
     ].map((name) => zh(name).trim()).filter(Boolean));
-    const jpGenreBlock = pickFirst(/ジャンル[：:]\s*(.*?)\s+(?:東京恋人|品番|~~DOWNLOAD~~)/i, description);
-    const enTagsBlock = pickFirst(/Tags:\s*(.*?)\s+配信開始日[：:]/i, description);
+    const jpGenreBlock = pickFirst(/(?:ジャンル|商品タグ|商品标签)[：:]\s*(.*?)\s+(?:東京恋人|品番|配信開始日|販売日|贩売日|销售日|収録時間|収录时间|收录时间|~~DOWNLOAD~~)/i, description);
+    const enTagsBlock = pickFirst(/Tags:\s*(.*?)\s+(?:配信開始日|販売日|贩売日|销售日|商品タグ|商品标签|【|~~DOWNLOAD~~)/i, description);
     const tags = normalizeTags([
       ...jpGenreBlock.split(/\s+/),
       ...enTagsBlock.split(/[,，]/),
@@ -396,6 +402,10 @@ export async function queryJav321(input) {
     detail = await fetchMissavDetail(code);
   }
   const javdbMeta = await fetchJavdbMeta(detail?.code || code);
+  let threeXPlanetDetail = null;
+  if (!detail && !javdbMeta?.rawTitle) {
+    threeXPlanetDetail = await fetchThreeXPlanetDetail(code);
+  }
   if (!detail && javdbMeta?.rawTitle) {
     detail = {
       rawTitle: javdbMeta.rawTitle,
@@ -407,10 +417,13 @@ export async function queryJav321(input) {
       source: 'javdb',
     };
   }
+  if (!detail && threeXPlanetDetail?.cover) {
+    detail = threeXPlanetDetail;
+  }
   if (!detail) throw new Error('未找到相关番号');
-  const threeXPlanetDetail = (!detail.cover || !detail.actors?.length || !detail.tags?.length)
+  threeXPlanetDetail = threeXPlanetDetail || ((!detail.cover || !detail.actors?.length || !detail.tags?.length)
     ? await fetchThreeXPlanetDetail(detail.code || code)
-    : null;
+    : null);
   if (threeXPlanetDetail?.cover) {
     // 3xplanet often has the actual composite cover for amateur entries where jav321/DMM returns a mismatched small jacket.
     detail.cover = threeXPlanetDetail.cover;
@@ -437,7 +450,9 @@ export async function queryJav321(input) {
       if (tag && !actorTags.includes(tag)) actorTags.push(tag);
     }
   }
-  const tagTags = (detail.tags || []).slice(0, 20).map((t) => toHashTag(zh(t))).filter(Boolean);
+  const tagTags = /^(?:FC2-PPV-|FC2-)/i.test(detail.code || code)
+    ? []
+    : (detail.tags || []).slice(0, 20).map((t) => toHashTag(zh(t))).filter(Boolean);
 
   const caption = [
     `<b>番号：</b>${toHashTag(detail.code || code)}`,
