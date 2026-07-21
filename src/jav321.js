@@ -129,6 +129,15 @@ function absDmm(url = '') {
   return fixed;
 }
 
+function isJav321Cover(url = '') {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname === 'jav321.com' || hostname.endsWith('.jav321.com');
+  } catch {
+    return false;
+  }
+}
+
 function unique(arr) {
   return [...new Set(arr.filter(Boolean))];
 }
@@ -421,6 +430,9 @@ export async function queryJav321(input) {
     detail = threeXPlanetDetail;
   }
   if (!detail) throw new Error('未找到相关番号');
+  if (javdbMeta.cover && (!detail.cover || isJav321Cover(detail.cover))) {
+    detail.cover = javdbMeta.cover;
+  }
   threeXPlanetDetail = threeXPlanetDetail || ((!detail.cover || !detail.actors?.length || !detail.tags?.length)
     ? await fetchThreeXPlanetDetail(detail.code || code)
     : null);

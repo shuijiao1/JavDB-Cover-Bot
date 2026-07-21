@@ -13,6 +13,17 @@ test('queryJav321 falls back to JavDB when JAV321 and MissAV do not return a det
   assert.ok(result.cover, 'expected cover from fallback source');
 });
 
+// Regression: JAV321 returns metadata for HHL-141, but its image URL responds
+// with AccessDenied. An exact JavDB match has a working jdbstatic cover, so the
+// merged result should prefer that cover instead of making the Telegram query fail.
+test('queryJav321 prefers the exact JavDB cover over a JAV321 cover URL', async () => {
+  const result = await queryJav321('HHL-141');
+
+  assert.equal(result.code, 'HHL-141');
+  assert.match(result.caption, /#HHL-141/);
+  assert.match(new URL(result.cover).hostname, /(^|\.)jdbstatic\.com$/);
+});
+
 // Regression: numeric FC2 shorthand 4361640 is not present as an exact JavDB
 // search result, while 3xplanet has a detail page. The bot should still return
 // the FC2 detail instead of stopping at JavDB's non-exact search miss.
