@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { queryJav321 } from '../src/jav321.js';
+import { isJavdbCover, queryJav321 } from '../src/jav321.js';
 
 // Regression: ABW-198 exists on JavDB, but JAV321 is currently blocked by
 // Cloudflare and MissAV redirects to a 403 target. The bot should still find it
@@ -10,18 +10,17 @@ test('queryJav321 falls back to JavDB when JAV321 and MissAV do not return a det
 
   assert.equal(result.code, 'ABW-198');
   assert.match(result.caption, /#ABW-198/);
-  assert.ok(result.cover, 'expected cover from fallback source');
+  assert.ok(!result.cover || !isJavdbCover(result.cover), 'JavDB covers must never be returned');
 });
 
-// Regression: JAV321 returns metadata for HHL-141, but its image URL responds
-// with AccessDenied. An exact JavDB match has a working jdbstatic cover, so the
-// merged result should prefer that cover instead of making the Telegram query fail.
-test('queryJav321 prefers the exact JavDB cover over a JAV321 cover URL', async () => {
+// Regression: an exact JavDB match may have a working jdbstatic image, but it
+// is watermarked and must not be exposed as the bot cover.
+test('queryJav321 never returns a JavDB cover URL', async () => {
   const result = await queryJav321('HHL-141');
 
   assert.equal(result.code, 'HHL-141');
   assert.match(result.caption, /#HHL-141/);
-  assert.match(new URL(result.cover).hostname, /(^|\.)jdbstatic\.com$/);
+  assert.ok(!result.cover || !isJavdbCover(result.cover));
 });
 
 // Regression: numeric FC2 shorthand 4361640 is not present as an exact JavDB

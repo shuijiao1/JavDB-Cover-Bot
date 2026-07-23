@@ -129,13 +129,22 @@ function absDmm(url = '') {
   return fixed;
 }
 
-function isJav321Cover(url = '') {
+// JavDB/JDBStatic images carry a visible watermark. JavDB remains useful for
+// metadata fallback, but its cover URLs must never reach Telegram.
+export function isJavdbCover(url = '') {
   try {
     const hostname = new URL(url).hostname.toLowerCase();
-    return hostname === 'jav321.com' || hostname.endsWith('.jav321.com');
+    return hostname === 'javdb.com'
+      || hostname.endsWith('.javdb.com')
+      || hostname === 'jdbstatic.com'
+      || hostname.endsWith('.jdbstatic.com');
   } catch {
     return false;
   }
+}
+
+function allowedCover(url = '') {
+  return isJavdbCover(url) ? '' : url;
 }
 
 function unique(arr) {
@@ -348,7 +357,6 @@ async function fetchJavdbMeta(code) {
     return {
       rawTitle: result?.detail?.rawTitle || result?.item?.title || '',
       releaseDate: result?.detail?.releaseDate || result?.item?.meta || '',
-      cover: result?.cover || '',
       tags: normalizeTags(result?.detail?.tags || []),
       actors: (result?.detail?.actors || [])
         .filter((a) => !a?.gender || a.gender === 'female')
@@ -422,7 +430,7 @@ export async function queryJav321(input) {
       code,
       actors: javdbMeta.actors || [],
       tags: javdbMeta.tags || [],
-      cover: javdbMeta.cover,
+      cover: '',
       source: 'javdb',
     };
   }
@@ -430,15 +438,13 @@ export async function queryJav321(input) {
     detail = threeXPlanetDetail;
   }
   if (!detail) throw new Error('未找到相关番号');
-  if (javdbMeta.cover && (!detail.cover || isJav321Cover(detail.cover))) {
-    detail.cover = javdbMeta.cover;
-  }
+  detail.cover = allowedCover(detail.cover);
   threeXPlanetDetail = threeXPlanetDetail || ((!detail.cover || !detail.actors?.length || !detail.tags?.length)
     ? await fetchThreeXPlanetDetail(detail.code || code)
     : null);
   if (threeXPlanetDetail?.cover) {
     // 3xplanet often has the actual composite cover for amateur entries where jav321/DMM returns a mismatched small jacket.
-    detail.cover = threeXPlanetDetail.cover;
+    detail.cover = allowedCover(threeXPlanetDetail.cover);
     if (!detail.releaseDate && threeXPlanetDetail.releaseDate) detail.releaseDate = threeXPlanetDetail.releaseDate;
   }
   if ((!detail.actors || !detail.actors.length) && !javdbMeta.actors.length && threeXPlanetDetail?.actors?.length) detail.actors = threeXPlanetDetail.actors;
